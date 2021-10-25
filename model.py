@@ -1,3 +1,4 @@
+"""Graph neural network classifier implementation."""
 import torch
 import torch.nn as nn
 
@@ -46,6 +47,7 @@ class GraphConvLayer(nn.Module):
         self.normalize = normalize
 
     def preprocess_nodes(self, node_features, edge_weights=None):
+        """Pre-process node features with FFN"""
         y = self.preprocess_ffn(node_features)
 
         if edge_weights is not None:
@@ -54,10 +56,11 @@ class GraphConvLayer(nn.Module):
         return y
 
     def aggregate(self, indices, neighbour_msg, n_nodes):
+        """Aggregate representations from neighbours."""
         n_features = neighbour_msg.shape[-1]
         aggregated_msg = torch.zeros(n_nodes, n_features, dtype=neighbour_msg.dtype).to(neighbour_msg.device)
 
-        # for each node aggregate features of his neighbours
+        # Aggregate representation of each node neighbour.
         if self.aggregation_type == "sum":
             indices = torch.unsqueeze(indices, -1)
             indices = indices.expand([-1, n_features])  # reshape to [n_edges, n_features]
@@ -80,6 +83,7 @@ class GraphConvLayer(nn.Module):
         return aggregated_msg
 
     def update(self, node_representation, aggregated_msg):
+        """Combine node representation together with aggregated neighbours messages."""
         if self.combination_type == "concat":
             embedding = torch.cat((node_representation, aggregated_msg), -1)
         elif self.combination_type == "sum":
@@ -87,8 +91,10 @@ class GraphConvLayer(nn.Module):
         else:
             raise ValueError("Invalid argument: Combination type must be concat or sum")
 
+        # post-process combined representation with FFN
         embedding = self.update_ffn(embedding)
 
+        # Apply L2 normalization
         if self.normalize:
             embedding = nn.functional.normalize(embedding, dim=-1, p=2)
 
@@ -163,8 +169,10 @@ class GNNClassifier(nn.Module):
         # Skip connection
         x = x + y
 
+        # Post-process node representations
         x = self.postprocess(x)
 
+        # Select nodes from mini-batch.
         embedding = x[input_node_indices]
         # Process embedding with linear layer
         embedding = self.logits(embedding)

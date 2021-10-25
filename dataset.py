@@ -5,15 +5,24 @@ import pandas as pd
 
 
 def read_dataset(file_path):
+    """Method for reading and processing CORA dataset.
+    Args:
+        file_path: path to dataset location. Location contain cites, content and paper csv files.
+    """
     cites = pd.read_csv(os.path.join(file_path, "cites.csv"))
     content = pd.read_csv(os.path.join(file_path, "content.csv"))
     papers = pd.read_csv(os.path.join(file_path, "paper.csv"))
+    # Find unique node class names
     class_names = papers["class_label"].unique()
 
+    # Remove unnecessary characters
     content["word_cited_id"] = content["word_cited_id"].apply(lambda x: re.sub(r"\D", "", x))
     content["word_cited_id"] = pd.factorize(content["word_cited_id"].astype("int32"), sort=True)[0]
+
+    # Replace string class names with class index
     papers["class_label"] = papers["class_label"].apply(lambda x: np.where(class_names == x)[0][0])
 
+    # Re-factorize paper ids
     paper_key = dict(zip(papers["paper_id"].tolist(), range(len(papers["paper_id"]))))
     papers["paper_id"] = papers["paper_id"].apply(lambda x: paper_key[x])
     content["paper_id"] = content["paper_id"].apply(lambda x: paper_key[x])
@@ -24,14 +33,17 @@ def read_dataset(file_path):
     n_papers = papers.shape[0]
     n_edges = cites.shape[0]
 
+    # Node representations with ones for words contained in paper.
     node_features = np.zeros([n_papers, n_word])
     node_features[content["paper_id"], content["word_cited_id"]] = 1
     del content
+
     edge_weights = np.ones(n_edges, dtype=np.float32)
     features_col = [f"word_{i}" for i in range(n_word)]
     node_features = pd.DataFrame(node_features, columns=features_col)
     papers = pd.concat([papers, node_features], axis=1)
 
+    # Split dataset to train and test sets
     train_samples = []
     test_samples = []
     for _, group in papers.groupby("class_label"):
