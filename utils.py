@@ -30,10 +30,12 @@ class EarlyStopping:
 
 
 class TBLogs:
+    """Callback for logging into tensorboard."""
     def __init__(self, log_path):
         self.writter = SummaryWriter(log_path)
 
     def __call__(self, epoch, *args, **kwargs):
+        """Logging scalar values into tensorboard."""
         for key, value in kwargs.items():
             if isinstance(value, float):
                 self.writter.add_scalar(key, value, epoch)
@@ -42,5 +44,6 @@ class TBLogs:
                 self.writter.add_scalars(key, {'train': train, 'validation': validation}, epoch)
 
     def save_graph(self, model):
+        """Logging model graph into tensorboard."""
         self.writter.add_graph(model, torch.tensor([3, 4, 5]))
 

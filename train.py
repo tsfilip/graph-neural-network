@@ -22,7 +22,7 @@ flags.DEFINE_integer("batch_size", 256, "Batch size for training.")
 flags.DEFINE_integer("n_epochs", 500, "Number of training epochs.")
 flags.DEFINE_integer("patience", 300, "Number of patience steps for early stopping.")
 flags.DEFINE_float("learning_rate", 0.01, "Learning rate for training.")
-flags.DEFINE_float("dropout_rate", 0.6, "dropout_rate.")
+flags.DEFINE_float("dropout_rate", 0.5, "dropout_rate.")
 flags.DEFINE_bool("save_model", False, "Save model graph to tensorboard.")
 
 
