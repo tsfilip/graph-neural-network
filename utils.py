@@ -46,4 +46,3 @@ class TBLogs:
     def save_graph(self, model):
         """Logging model graph into tensorboard."""
         self.writter.add_graph(model, torch.tensor([3, 4, 5]))
-
