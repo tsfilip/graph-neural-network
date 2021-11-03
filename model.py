@@ -3,8 +3,13 @@ import torch
 import torch.nn as nn
 
 
+# ======================================================================================================================
+#                                                Graph Convolution Network
+# ======================================================================================================================
+
+
 class FFN(nn.Module):
-    def __init__(self, out_features, n_features, dropout_rate, activation="gelu"):
+    def __init__(self, out_features, n_features, dropout_rate=0.2, activation="gelu"):
         super(FFN, self).__init__()
         if activation == "gelu":
             activation = nn.GELU()
@@ -33,7 +38,7 @@ class FFN(nn.Module):
 class GraphConvLayer(nn.Module):
     def __init__(self, ffn_units,
                  n_features,
-                 dropout_rate,
+                 dropout_rate=0.2,
                  normalize=False,
                  aggregation_type="mean",
                  combination_type="concat"):
@@ -111,7 +116,7 @@ class GraphConvLayer(nn.Module):
         return embedding
 
 
-class GNNClassifier(nn.Module):
+class GCNClassifier(nn.Module):
     def __init__(self,
                  graph_info,
                  n_class,
@@ -123,7 +128,7 @@ class GNNClassifier(nn.Module):
                  *args,
                  **kwargs):
 
-        super(GNNClassifier, self).__init__(*args, **kwargs)
+        super(GCNClassifier, self).__init__(*args, **kwargs)
 
         node_features, edges, edge_weights = graph_info
         n_features = node_features.shape[-1]
@@ -179,4 +184,104 @@ class GNNClassifier(nn.Module):
         return embedding
 
 
+# ======================================================================================================================
+#                                                Graph Attention Network
+# ======================================================================================================================
 
+class GraphAttentionLayer(nn.Module):
+    """Graph attention layer for processing graph structured data.
+    Args:
+        n_heads: number of attention heads,
+        in_features: input feature shape,
+        out_features: number of features for each attention head
+    """
+    def __init__(self, in_features, out_features, n_heads, concat=True):
+        super(GraphAttentionLayer, self).__init__()
+
+        if concat:
+            assert out_features % n_heads == 0
+            out_features = out_features // n_heads
+
+        self.concat = concat
+        self.n_heads = n_heads
+        self.preprocess = nn.Linear(in_features, n_heads * out_features, bias=False)
+        self.attention_layer = nn.Linear(2 * out_features, 1, bias=False)
+        self.activation = nn.LeakyReLU(negative_slope=0.2)
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, node_representations, edges):
+        n_nodes = node_representations.shape[0]
+
+        node_indices, neighbour_indices = edges[0], edges[1]
+        adjacency_matrix = torch.eye(n_nodes, dtype=torch.bool).to(node_representations.device)
+        adjacency_matrix[node_indices, neighbour_indices] = True
+        adjacency_matrix[neighbour_indices, node_indices] = True
+        adjacency_matrix = torch.unsqueeze(adjacency_matrix, -1)
+
+        x = self.preprocess(node_representations)
+        x = x.view(n_nodes, self.n_heads, -1)  # shape (n_nodes, n_heads, out_features)
+
+        x_source = x.repeat(n_nodes, 1, 1)  # shape (n_nodes * n_nodes, n_heads, out_features)
+        x_target = x.repeat_interleave(n_nodes, 0)
+
+        x_cat = torch.cat([x_source, x_target], -1)
+        x_cat = x_cat.view(n_nodes, n_nodes, self.n_heads, -1)  # shape (n_nodes, n_nodes, n_heads, 2 * out_features)
+        x_cat = self.activation(self.attention_layer(x_cat))  # shape (n_nodes, n_nodes, n_heads, 1)
+        x_cat = x_cat.squeeze(-1)
+
+        x_cat = x_cat.masked_fill(~adjacency_matrix, float('-inf'))  # shape (n_nodes, n_nodes, n_heads)
+
+        a = self.softmax(x_cat)
+        h = torch.einsum("ijh,jhk->ihk", a, x)  # shape(n_nodes, n_head, out_features)
+
+        if self.concat:
+            h = h.reshape(n_nodes, -1)  # shape (n_nodes, out_features * n_heads)
+        else:
+            h = torch.mean(h, axis=1)  # shape (n_Nodes, out_features)
+
+        return h
+
+
+class GANClassfier(nn.Module):
+    def __init__(self,
+                 graph_info,
+                 n_class,
+                 out_features,
+                 dropout_rate=0.2,
+                 concat=True,
+                 n_heads=4,
+                 *args,
+                 **kwargs):
+        super(GANClassfier, self).__init__(*args, **kwargs)
+
+        node_features, edges, _ = graph_info
+        n_features = node_features.shape[-1]
+        in_shape = out_features[-1]
+
+        self.node_features = node_features.float()
+        self.edges = edges
+
+        self.preprocess = FFN(out_features, n_features, dropout_rate)
+        self.gan1 = GraphAttentionLayer(in_shape, in_shape, n_heads, concat)
+        self.dropout = nn.Dropout(dropout_rate)
+        self.norm = nn.LayerNorm([in_shape])
+        self.postprocess = FFN(out_features, in_shape, dropout_rate)
+        self.logits = nn.Linear(in_shape, n_class)
+
+    def forward(self, input_node_indices):
+        # Preprocess features of all nodes
+        x = self.preprocess(self.node_features)
+
+        y = self.gan1(x, self.edges, self.edge_weights)
+        # Skip connection
+        x = x + self.dropout(y)
+        x = self.norm(x)
+
+        # Post-process node representations
+        x = self.postprocess(x)
+
+        # Select nodes from mini-batch.
+        embedding = x[input_node_indices]
+        # Process embedding with linear layer
+        embedding = self.logits(embedding)
+        return embedding

@@ -7,15 +7,16 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import trange
 
 from dataset import read_dataset
-from model import GNNClassifier
+from model import GCNClassifier, GANClassfier
 
 from absl import app, flags
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("train", "/media/tom/HDD-HARD-DISK-1/datasets/CORA/", "Path to dataset directory.")
-flags.DEFINE_string("model_name", "gcn.pt", "Model name.")
+flags.DEFINE_string("model_name", "cora.pt", "Model name.")
 flags.DEFINE_string("logs", None, "Path to logging directory.")
+flags.DEFINE_string("model_type", "gan", "Model type for training: gcn or gan.")
 flags.DEFINE_string("aggregation", "sum", "Aggregation type for neighbours node representations (sum or mean).")
 flags.DEFINE_string("combination", "concat", "Combination type for final representation update (sum or concat).")
 flags.DEFINE_integer("batch_size", 256, "Batch size for training.")
@@ -95,8 +96,14 @@ def main(argv):
     test = DataLoader(Dataset(*test), batch_size=FLAGS.batch_size)
     graph_info = tuple(torch.from_numpy(i).to(device) for i in graph_info)
 
-    model = GNNClassifier(graph_info, len(class_names), hidden_units, aggregation_type=FLAGS.aggregation,
-                          combination_type=FLAGS.combination, dropout_rate=FLAGS.dropout_rate)
+    if FLAGS.model_type == "gcn":
+        model = GCNClassifier(graph_info, len(class_names), hidden_units, aggregation_type=FLAGS.aggregation,
+                            combination_type=FLAGS.combination, dropout_rate=FLAGS.dropout_rate)
+    elif FLAGS.model_type == "gan":
+        model = GANClassfier(graph_info, len(class_names), hidden_units, dropout_rate=FLAGS.dropout_rate)
+    else:
+        raise ValueError("Network type must be either graph convolution network or graph attention network.")
+
     model.to(device)
     optimizer = optim.Adam(model.parameters(), FLAGS.learning_rate)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.1,
@@ -126,7 +133,7 @@ def main(argv):
 
         if val_loss < minimal_loss:  # Save model with the lowest val_loss value
             minimal_loss = val_loss
-            torch.save(model.state_dict(), FLAGS.model_name)
+            torch.save(model.state_dict(), FLAGS.model_type + "_" + FLAGS.model_name)
         if early_stopping.early_stop:
             print("Early stopping at {0} epoch.".format(epoch))
             break
