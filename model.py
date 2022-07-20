@@ -209,14 +209,8 @@ class GraphAttentionLayer(nn.Module):
         self.activation = nn.LeakyReLU(negative_slope=0.2)
         self.softmax = nn.Softmax(dim=1)
 
-    def forward(self, node_representations, edges):
+    def forward(self, node_representations, adjacency_matrix):
         n_nodes = node_representations.shape[0]
-
-        node_indices, neighbour_indices = edges[0], edges[1]
-        adjacency_matrix = torch.eye(n_nodes, dtype=torch.bool).to(node_representations.device)
-        adjacency_matrix[node_indices, neighbour_indices] = True
-        adjacency_matrix[neighbour_indices, node_indices] = True
-        adjacency_matrix = torch.unsqueeze(adjacency_matrix, -1)
 
         x = self.preprocess(node_representations)
         x = x.view(n_nodes, self.n_heads, -1)  # shape (n_nodes, n_heads, out_features)
@@ -258,8 +252,14 @@ class GANClassfier(nn.Module):
         n_features = node_features.shape[-1]
         in_shape = out_features[-1]
 
+        # Create adjacency matrix of shape (n_nodes, n_nodes)
+        node_indices, neighbour_indices = edges[0], edges[1]
+        adjacency_matrix = torch.eye(node_features.shape[0], dtype=torch.bool).to(node_features.device)
+        adjacency_matrix[node_indices, neighbour_indices] = True
+        adjacency_matrix[neighbour_indices, node_indices] = True
+        adjacency_matrix = torch.unsqueeze(adjacency_matrix, -1)
+        self.adjacency_matrix = adjacency_matrix
         self.node_features = node_features.float()
-        self.edges = edges
 
         self.preprocess = FFN(out_features, n_features, dropout_rate)
         self.gan1 = GraphAttentionLayer(in_shape, in_shape, n_heads, concat)
@@ -272,7 +272,7 @@ class GANClassfier(nn.Module):
         # Preprocess features of all nodes
         x = self.preprocess(self.node_features)
 
-        y = self.gan1(x, self.edges, self.edge_weights)
+        y = self.gan1(x, self.adjacency_matrix)
         # Skip connection
         x = x + self.dropout(y)
         x = self.norm(x)
