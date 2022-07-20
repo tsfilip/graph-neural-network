@@ -13,7 +13,7 @@ from absl import app, flags
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string("train", "/media/tom/HDD-HARD-DISK-1/datasets/CORA/", "Path to dataset directory.")
+flags.DEFINE_string("train", None, "Path to dataset directory.")
 flags.DEFINE_string("model_name", "cora.pt", "Model name.")
 flags.DEFINE_string("logs", None, "Path to logging directory.")
 flags.DEFINE_string("model_type", "gan", "Model type for training: gcn or gan.")
