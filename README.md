@@ -1,6 +1,6 @@
 # Graph neural network
 
-Graph neural network implementation and its evalation on CORA dataset.
+Graph neural network implementation and evaluation on CORA dataset.
 
 Models: 
 * graph convolution network
